@@ -1,0 +1,76 @@
+{
+  "name": "PCB Xpress - Professional PCB Fabrication & 3D Printing Services",
+  "short_name": "PCB Xpress",
+  "description": "ISO 9001 certified PCB manufacturer. 24-72h prototyping, full assembly services, and professional 3D printing. Bangalore & Kerala, India.",
+  "start_url": "https://pcbxpress.online",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "scope": "https://pcbxpress.online",
+  "lang": "en-US",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "utilities", "shopping"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "https://pcbxpress.online/favicon.svg",
+      "sizes": "32x32",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://pcbxpress.online/favicon.svg",
+      "sizes": "16x16",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://pcbxpress.online/favicon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://pcbxpress.online/favicon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "https://pcbxpress.online/pcb.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "PCB Xpress - Professional Electronics Manufacturing"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Get Quote",
+      "short_name": "Quote",
+      "description": "Get instant quote for PCB fabrication",
+      "url": "https://pcbxpress.online/quote",
+      "icons": [
+        {
+          "src": "https://pcbxpress.online/favicon.svg",
+          "sizes": "32x32"
+        }
+      ]
+    },
+    {
+      "name": "Components",
+      "short_name": "Parts",
+      "description": "Browse electronic components",
+      "url": "https://pcbxpress.online/components",
+      "icons": [
+        {
+          "src": "https://pcbxpress.online/favicon.svg",
+          "sizes": "32x32"
+        }
+      ]
+    }
+  ]
+}

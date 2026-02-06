@@ -1,0 +1,22 @@
+in Dashboard---
+All Projects-Allocated-total: 21919.00h
+Consumed-Allocated: 10131.00h
+Remaining: 11788.00h
+
+Projects Allocated vs Consumed pie to All Deliverables-Allocated-total: 10131.00h
+Consumed-Allocated: 4259.46h
+Remaining: 5871.54h
+
+Projects Exceeding Allocated Hours - project no insted of name 
+
+Projects---sort works on page wise
+
+Project Details---Planned MH Drafting & Planned MH Design -highlite
+
+Deliverables--use worktype insted of All Categories---total agenst sort 
+
+User Hours Report---sort--- Date with from & to---remove Email & Role
+
+All Timesheets--- sort --- Date with from & to--- add worktype sort---total---short issue not working agenst
+
+general---Items per page:50&100---sort working pagewise

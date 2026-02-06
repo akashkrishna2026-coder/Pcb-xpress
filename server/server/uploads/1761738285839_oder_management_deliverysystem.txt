@@ -1,0 +1,43 @@
+Admin Panel
+
+can create salesman / driver 
+assign vehicles for salesman / driver
+create routed based on vehicles 
+on each route assign the stores 
+total stock in each vehicle (boxes)
+remaning stock in each vehicle 
+
+return stock
+
+after sales - store based report - current date
+monthly report
+weekly report 
+
+
+salesman
+
+return stock
+
+show total stock in salesman app
+remaining stock
+
+scan qr codes can order taking 
+
+show previous due 
+
+generate bill 
+current received amount and current due -- print bill 
+
+
+
+Plan Your Application Structure
+
+
+Define the purpose of your app and the key features.
+Identify core entities (like User, Product, etc.) and the relationships between them.
+Write down essential functionalities and how users will interact with them.
+
+
+create db diagram in dbdiagram.io
+
+

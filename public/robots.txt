@@ -1,0 +1,40 @@
+# Robots.txt for PCB Xpress
+# https://pcbxpress.online/robots.txt
+
+User-agent: *
+Allow: /
+
+# Allow all major search engines
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: Baiduspider
+Allow: /
+
+User-agent: YandexBot
+Allow: /
+
+# Disallow admin areas
+Disallow: /pcbXpress/
+Disallow: /admin/
+Disallow: /api/
+
+# Disallow development and testing paths
+Disallow: /test/
+Disallow: /dev/
+Disallow: /staging/
+
+# Allow sitemap
+Sitemap: https://pcbxpress.online/sitemap.xml
+
+# Crawl delay (optional)
+Crawl-delay: 1

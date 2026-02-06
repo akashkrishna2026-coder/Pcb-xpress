@@ -1,0 +1,12 @@
+
+
+
+
+job card -- panel / single pcb 
+
+pcb - drill bit 
+
+after drilling ----- sandering---brushing -- qa/qc ---pth and flashing----- qc --- pattern plating ( film exposure )--- developing ---- etching 
+
+
+pcb ASSEMBLE -- NEW QUOTE SECTION ---- PC A --- ADD STENCIL ( PROVIDDED BY CUSTOMER OR ADDED BY ADMIN)

@@ -1,0 +1,29 @@
+Flow Step,Mapped Login / Role,Explicit QC Node in Chart,Stage QC after Step (per requirement),Verification
+Input Data from Customer,Customer Portal (External),No,Yes,PASS
+CAM from Customer Data,CAM Engineer (Intake),No,Yes,PASS
+Create NC Drill File,CAM – NC Drill,No,Yes,PASS
+Create File for Photo Film‑Image & Legend,CAM – Phototools/Legend,No,Yes,PASS
+Job-Card Preparation,Production Control / Job Card,No,Yes,PASS
+Sheet Cutting,Sheet Cutting Operator,No,Yes,PASS
+CNC Drilling,CNC Drilling Operator,No,Yes,PASS
+PTH + Flash Plating,PTH Line Operator,No,Yes,PASS
+Photo‑Image Transfer,Photo Imaging Operator,No,Yes,PASS
+Photo‑Image Inspection,QA – Photo Imaging Inspection,Yes,Yes,PASS
+Alkaline Etching,Etching Line Operator,No,Yes,PASS
+Tin Stripping,Tin Strip Operator,No,Yes,PASS
+Etching Inspection,QA – Etch Inspection,Yes,Yes,PASS
+Dry Film Inspection,QA – Dry Film Inspection,Yes,Yes,PASS
+Strip (Resist Strip),Resist Strip Operator,No,Yes,PASS
+Dry Film Stripping,Dry Film Strip Operator,No,Yes,PASS
+Pattern Plating,Pattern Plating Operator,No,Yes,PASS
+Solder Mask Printing & Exposing,Solder Mask Operator,No,Yes,PASS
+Solder Mask Inspection,QA – Solder Mask Inspection,Yes,Yes,PASS
+HAL,HAL Operator,No,Yes,PASS
+HAL Inspection,QA – HAL Inspection,Yes,Yes,PASS
+Legend Printing,Legend Printer Operator,No,Yes,PASS
+CNC Routing,CNC Routing Operator,No,Yes,PASS
+V Scoring,V‑Score Operator,No,Yes,PASS
+Flying Probe Testing,Test – Flying Probe,Yes,Yes,PASS
+FINAL QC (PDIR),QA – Final Inspection / PDIR,Yes,Yes,PASS
+PACKING,Packing Operator,No,Yes,PASS
+DESPATCH,Dispatch / Shipping,No,Yes,PASS
