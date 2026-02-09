@@ -13,10 +13,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import SalesLayout from '@/components/sales/SalesLayout';
+import { useSalesData } from '@/components/sales/SalesDataContext';
 import { getSalesToken } from '@/lib/storage';
 import { api } from '@/lib/api';
 import { 
@@ -24,7 +24,6 @@ import {
   Plus, 
   Search, 
   Eye, 
-  Edit, 
   Phone, 
   Mail, 
   MapPin, 
@@ -43,7 +42,7 @@ import {
   Filter,
   Download,
   MessageSquare,
-  Flag
+  Edit
 } from 'lucide-react';
 
 // Payment Proof Status Component
@@ -64,12 +63,38 @@ const PaymentProofStatus = ({ status }) => {
   );
 };
 
+// Quote Badge Component
+const QuoteBadge = ({ hasQuote, quoteCount = 0 }) => {
+  const config = hasQuote
+    ? { label: 'Quoted', color: 'bg-emerald-100 text-emerald-800' }
+    : { label: 'No Quote', color: 'bg-gray-100 text-gray-700' };
+
+  const suffix = hasQuote && Number(quoteCount) > 1 ? ` (${quoteCount})` : '';
+
+  return (
+    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
+      {config.label}{suffix}
+    </span>
+  );
+};
+
+const normalizeEmail = (email) => (email || '').toLowerCase().trim();
+
+const getQuoteEmail = (quote) => {
+  return normalizeEmail(
+    quote?.contact?.email ||
+      quote?.customerEmail ||
+      quote?.email ||
+      quote?.customer?.email
+  );
+};
+
 const SalesCustomersPage = () => {
   const { toast } = useToast();
+  const salesData = useSalesData();
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSource, setFilterSource] = useState('all'); // 'all', 'website', 'phone', 'office_visit', 'email', 'referral', 'quote', 'signup', 'other'
-  const [filterPriority, setFilterPriority] = useState('all'); // 'all', 'high', 'normal', 'low'
   const [sortBy, setSortBy] = useState('createdAt'); // 'createdAt', 'name', 'lastVisit', 'revenue'
   const [sortOrder, setSortOrder] = useState('desc'); // 'asc', 'desc'
   const [customers, setCustomers] = useState([]);
@@ -91,7 +116,6 @@ const SalesCustomersPage = () => {
     pincode: '',
     industry: '',
     visitType: 'office',
-    priority: 'normal',
     notes: ''
   });
   const [visitData, setVisitData] = useState({
@@ -110,6 +134,14 @@ const SalesCustomersPage = () => {
     loadCustomersFromQuotes();
     loadUserActivity();
   }, []);
+
+  // Sync shared context data into local state so cross-page mutations propagate
+  useEffect(() => {
+    if (salesData.quotes.length) setQuotes(salesData.quotes);
+  }, [salesData.quotes]);
+  useEffect(() => {
+    if (salesData.customersFromQuotes.length) setCustomersFromQuotes(salesData.customersFromQuotes);
+  }, [salesData.customersFromQuotes]);
 
   const loadCustomersFromQuotes = async () => {
     try {
@@ -145,6 +177,8 @@ const SalesCustomersPage = () => {
       // Reload customers to show the newly synced ones
       loadCustomers();
       loadCustomersFromQuotes();
+      salesData.refreshCustomers();
+      salesData.refreshCustomersFromQuotes();
     } catch (error) {
       console.error('Error Customer:', error);
       toast({ 
@@ -406,7 +440,6 @@ const SalesCustomersPage = () => {
         pincode: formData.pincode?.trim() || '',
         industry: formData.industry?.trim() || '',
         visitType: formData.visitType || 'office',
-        priority: formData.priority || 'normal',
         gtInfo: normalizedGstNumber ? {
           gtNumber: normalizedGstNumber,
           issuedDate: new Date().toISOString(),
@@ -437,12 +470,12 @@ const SalesCustomersPage = () => {
         pincode: '',
         industry: '',
         visitType: 'office',
-        priority: 'normal',
         notes: ''
       });
       
       // Reload customers to get fresh data
       await loadCustomers();
+      salesData.refreshCustomers(); // propagate to other pages
       
     } catch (error) {
       console.error('Error adding customer:', error);
@@ -499,6 +532,10 @@ const SalesCustomersPage = () => {
         notes: ''
       });
       loadCustomers();
+      // If a next follow-up date was set, refresh the shared follow-ups so it appears on Follow-ups page
+      if (visitData.nextFollowup) {
+        salesData.refreshFollowups();
+      }
     } catch (error) {
       console.error('Error logging visit:', error);
       toast({ 
@@ -508,64 +545,50 @@ const SalesCustomersPage = () => {
     }
   };
 
-  const handlePriorityChange = async (customerId, newPriority) => {
-    try {
-      console.log('handlePriorityChange called with customerId:', customerId, 'newPriority:', newPriority);
-      
-      if (!customerId) {
-        console.error('Customer ID is undefined');
-        toast({ 
-          title: 'Error', 
-          description: 'Customer ID is missing. Cannot update priority.' 
-        });
-        return;
-      }
-
-      const token = getSalesToken();
-      if (!token) {
-        toast({ title: 'Authentication error', description: 'Please log in again' });
-        return;
-      }
-
-      // Update customer priority via API
-      await api.updateCustomerPriority(token, customerId, newPriority);
-      
-      // Force re-render by creating a new array reference
-      setCustomers(prev => {
-        console.log('Before update - customers count:', prev.length);
-        const updated = prev.map(customer => {
-          if (customer.id === customerId || customer._id === customerId) {
-            console.log('Updating customer:', customer.name, 'from', customer.priority, 'to', newPriority);
-            return { ...customer, priority: newPriority };
-          }
-          return customer;
-        });
-        console.log('After update - customers count:', updated.length);
-        return [...updated]; // Force new array reference
-      });
-
-      // Also reload customers from server to ensure consistency
-      setTimeout(() => {
-        loadCustomers();
-      }, 500);
-      
-      toast({ 
-        title: 'Priority Updated', 
-        description: `Customer priority changed to ${newPriority}` 
-      });
-    } catch (error) {
-      console.error('Error updating priority:', error);
-      toast({ 
-        title: 'Error updating priority', 
-        description: error.message || 'Failed to update priority' 
-      });
-    }
-  };
-
   // Extract unique customers from quotes
   const getCustomersFromQuotesData = useMemo(() => {
     return customersFromQuotes;
   }, [customersFromQuotes]);
+
+  // Build a lookup: email -> number of quotes
+  const quoteCountByEmail = useMemo(() => {
+    const map = new Map();
+
+    // Prefer direct quotes list when available
+    if (Array.isArray(quotes)) {
+      quotes.forEach((quote) => {
+        const email = getQuoteEmail(quote);
+        if (!email) return;
+        map.set(email, (map.get(email) || 0) + 1);
+      });
+    }
+
+    // Also consider aggregated “customersFromQuotes” (when quotes array is not detailed)
+    if (Array.isArray(getCustomersFromQuotesData)) {
+      getCustomersFromQuotesData.forEach((customer) => {
+        const email = normalizeEmail(customer?.email);
+        if (!email) return;
+
+        const existing = map.get(email) || 0;
+        const aggCountRaw =
+          customer?.quoteCount ??
+          customer?.quotesCount ??
+          customer?.totalQuotes ??
+          customer?.quote_count ??
+          0;
+        const aggCount = Number(aggCountRaw) || 0;
+
+        if (aggCount > existing) {
+          map.set(email, aggCount);
+        } else if (existing === 0) {
+          // If we know this email is present in quotes-derived customers, treat as at least 1 quote.
+          map.set(email, 1);
+        }
+      });
+    }
+
+    return map;
+  }, [quotes, getCustomersFromQuotesData]);
 
   // Helper function to get source display info
   const getSourceDisplay = (source) => {
@@ -614,27 +637,25 @@ const SalesCustomersPage = () => {
     return 'active';
   };
 
-  const getCustomerPriority = (customer) => {
-    // Use actual revenue first, then estimated value as fallback
-    const revenue = customer.totalRevenue || customer.estimatedValue || 0;
-    if (revenue > 500000) return 'high';
-    if (revenue > 100000) return 'normal'; // Changed from 'medium' to 'normal'
-    return 'low';
-  };
-
   // Merge customers with quote customers and enhance data
   const allCustomers = useMemo(() => {
     const merged = new Map();
     
     // Add existing customers (use email as key for merging)
     customers.forEach(customer => {
+      const emailKey = normalizeEmail(customer.email);
+      // Backend now provides hasQuote & quoteCount; fall back to local lookup
+      const quoteCount = customer.quoteCount || (emailKey ? (quoteCountByEmail.get(emailKey) || 0) : 0);
+      const hasQuote = customer.hasQuote || quoteCount > 0;
+
       const enhancedCustomer = {
         ...customer,
         source: customer.source || 'website', // Preserve existing source, default to 'website' for migrated customers
         status: getCustomerStatus(customer),
-        priority: customer.priority || getCustomerPriority(customer), // Use customer.priority first, fallback to calculated
         totalOrders: customer.totalOrders || 0,
         totalRevenue: customer.totalRevenue || 0, // Use actual payment revenue, not estimated
+        hasQuote,
+        quoteCount,
         lastVisit: customer.lastVisit || (customer.visitHistory && customer.visitHistory.length > 0 
           ? new Date(Math.max(...customer.visitHistory.map(v => new Date(v.visitDate)))) 
           : null),
@@ -645,19 +666,22 @@ const SalesCustomersPage = () => {
           : null,
         visitCount: customer.visitHistory ? customer.visitHistory.length : 0
       };
-      merged.set(customer.email, enhancedCustomer); // Use email as key
+      merged.set(emailKey || customer.email, enhancedCustomer); // Use email as key
     });
     
     // Add quote customers (merge by email, don't overwrite existing ones)
     getCustomersFromQuotesData.forEach(customer => {
-      if (!merged.has(customer.email)) {
+      const emailKey = normalizeEmail(customer.email);
+      if (!merged.has(emailKey || customer.email)) {
+        const quoteCount = emailKey ? (quoteCountByEmail.get(emailKey) || 1) : 1;
         const enhancedQuoteCustomer = {
           ...customer,
           source: 'quote',
           status: getCustomerStatus(customer),
-          priority: getCustomerPriority(customer),
           totalOrders: 0,
           totalRevenue: customer.totalRevenue || 0, // Use actual revenue if available
+          hasQuote: true,
+          quoteCount,
           lastVisit: null,
           nextFollowup: null,
           visitCount: 0,
@@ -665,16 +689,21 @@ const SalesCustomersPage = () => {
           paymentStatus: customer.paymentProof?.status || 'not_submitted', // Add payment status
           estimatedValue: customer.estimatedValue || 0 // Keep estimated value for display
         };
-        merged.set(customer.email, enhancedQuoteCustomer); // Use email as key
+        merged.set(emailKey || customer.email, enhancedQuoteCustomer); // Use email as key
       } else {
         // Update existing customer with quote payment info if they have quotes
-        const existingCustomer = merged.get(customer.email);
+        const existingCustomer = merged.get(emailKey || customer.email);
         if (customer.paymentProof?.status && !existingCustomer.paymentStatus) {
           existingCustomer.paymentStatus = customer.paymentProof.status;
         }
         if (customer.estimatedValue && !existingCustomer.estimatedValue) {
           existingCustomer.estimatedValue = customer.estimatedValue;
         }
+
+        // Ensure we mark them as “quoted” if their email appears in quote data.
+        const quoteCount = emailKey ? (quoteCountByEmail.get(emailKey) || existingCustomer.quoteCount || 1) : (existingCustomer.quoteCount || 1);
+        existingCustomer.hasQuote = true;
+        existingCustomer.quoteCount = quoteCount;
       }
     });
     
@@ -686,7 +715,7 @@ const SalesCustomersPage = () => {
     });
     
     return result;
-  }, [customers, getCustomersFromQuotesData]);
+  }, [customers, getCustomersFromQuotesData, quoteCountByEmail]);
 
   // Enhanced customer analytics
   const customerAnalytics = useMemo(() => {
@@ -747,14 +776,11 @@ const SalesCustomersPage = () => {
         (filterSource === 'email' && customer.source === 'email') ||
         (filterSource === 'referral' && customer.source === 'referral') ||
         (filterSource === 'other' && customer.source === 'other');
-      
-      const matchesPriority = 
-        filterPriority === 'all' || customer.priority === filterPriority;
-      
-      return matchesSearch && matchesSource && matchesPriority;
+
+      return matchesSearch && matchesSource;
     });
 
-    console.log('Filtered customers:', filtered.map(c => ({ name: c.name, priority: c.priority })));
+    console.log('Filtered customers:', filtered.map(c => ({ name: c.name })));
 
     // Apply sorting
     filtered.sort((a, b) => {
@@ -788,7 +814,7 @@ const SalesCustomersPage = () => {
     });
     
     return filtered;
-  }, [allCustomers, searchTerm, filterSource, filterPriority, sortBy, sortOrder]);
+  }, [allCustomers, searchTerm, filterSource, sortBy, sortOrder]);
 
   if (loading) {
     return (
@@ -960,19 +986,6 @@ const SalesCustomersPage = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select value={formData.priority} onValueChange={(value) => setFormData({ ...formData, priority: value })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select priority" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="high">🔴 High</SelectItem>
-                        <SelectItem value="normal">🟡 Normal</SelectItem>
-                        <SelectItem value="low">🟢 Low</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                   <div className="col-span-2">
                     <Label htmlFor="address">Address</Label>
                     <Input
@@ -1067,18 +1080,6 @@ const SalesCustomersPage = () => {
                     </SelectContent>
                   </Select>
                   
-                  <Select value={filterPriority} onValueChange={setFilterPriority}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Priority" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Priority</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="normal">Normal</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
                   <Select value={sortBy} onValueChange={setSortBy}>
                     <SelectTrigger className="w-40">
                       <SelectValue placeholder="Sort by" />
@@ -1122,7 +1123,7 @@ const SalesCustomersPage = () => {
                       <tr className="border-b bg-gray-50">
                         <th className="text-left py-3 px-4 font-semibold">Customer</th>
                         <th className="text-left py-3 px-4 font-semibold">Contact</th>
-                        <th className="text-left py-3 px-4 font-semibold">Priority</th>
+                        <th className="text-left py-3 px-4 font-semibold">Signed Up / Login</th>
                         <th className="text-left py-3 px-4 font-semibold">Activity</th>
                         <th className="text-left py-3 px-4 font-semibold">Next Follow-up</th>
                         <th className="text-left py-3 px-4 font-semibold">Actions</th>
@@ -1157,6 +1158,10 @@ const SalesCustomersPage = () => {
                                       </span>
                                     );
                                   })()}
+                                  <QuoteBadge
+                                    hasQuote={customer.hasQuote || customer.source === 'quote'}
+                                    quoteCount={customer.quoteCount || 0}
+                                  />
                                   {customer.visitCount > 0 && (
                                     <span className="text-xs text-gray-500">
                                       {customer.visitCount} visits
@@ -1189,16 +1194,39 @@ const SalesCustomersPage = () => {
                             </div>
                           </td>
                           <td className="py-3 px-4">
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              customer.priority === 'high' 
-                                ? 'bg-red-100 text-red-800' 
-                                : customer.priority === 'normal'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-green-100 text-green-800'
-                            }`}>
-                              {customer.priority === 'high' ? '🔴 High' : 
-                               customer.priority === 'normal' ? '🟡 Normal' : '🟢 Low'}
-                            </span>
+                            <div className="space-y-1">
+                              {customer.createdAt && (
+                                <div className="flex items-center text-xs text-gray-600">
+                                  <UserPlus className="h-3 w-3 mr-1 text-green-500" />
+                                  <span>
+                                    {new Date(customer.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}{' '}
+                                    <span className="text-gray-400">
+                                      {new Date(customer.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                    </span>
+                                  </span>
+                                </div>
+                              )}
+                              {customer.lastLogin && (
+                                <div className="flex items-center text-xs text-gray-600">
+                                  <Clock className="h-3 w-3 mr-1 text-blue-500" />
+                                  <span>
+                                    {new Date(customer.lastLogin).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}{' '}
+                                    <span className="text-gray-400">
+                                      {new Date(customer.lastLogin).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                    </span>
+                                  </span>
+                                </div>
+                              )}
+                              {customer.loginHistory && customer.loginHistory.length > 0 && (
+                                <div className="flex items-center text-xs text-gray-500">
+                                  <Activity className="h-3 w-3 mr-1 text-purple-400" />
+                                  {customer.loginHistory.length} login{customer.loginHistory.length !== 1 ? 's' : ''}
+                                </div>
+                              )}
+                              {!customer.createdAt && !customer.lastLogin && (
+                                <span className="text-xs text-gray-400 italic">No login data</span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 px-4">
                             <div className="space-y-1">
@@ -1261,28 +1289,12 @@ const SalesCustomersPage = () => {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    title="Change Priority"
-                                    className={`${
-                                      customer.priority === 'high' ? 'border-red-300 text-red-600' : 
-                                      customer.priority === 'normal' ? 'border-yellow-300 text-yellow-600' : 
-                                      'border-green-300 text-green-600'
-                                    }`}
-                                    onClick={() => console.log('Button clicked - customer:', customer.name, 'priority:', customer.priority)}
+                                    title="Edit Customer"
                                   >
-                                    <Flag className="h-3 w-3" />
+                                    <Edit className="h-3 w-3" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handlePriorityChange(customer.id || customer._id, 'high')}>
-                                    🔴 High Priority
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handlePriorityChange(customer.id || customer._id, 'normal')}>
-                                    🟡 Normal Priority
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handlePriorityChange(customer.id || customer._id, 'low')}>
-                                    🟢 Low Priority
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
                                   <DropdownMenuLabel>Change Source</DropdownMenuLabel>
                                   <DropdownMenuItem onClick={() => handleSourceChange(customer.id || customer._id, 'website')}>
                                     🌐 Website
@@ -1304,34 +1316,7 @@ const SalesCustomersPage = () => {
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  toast({
-                                    title: 'Customer Details',
-                                    description: `Viewing details for ${customer.name}`
-                                  });
-                                }}
-                                title="View Details"
-                              >
-                                <FileText className="h-3 w-3" />
-                              </Button>
-                              {customer.nextFollowup && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    toast({
-                                      title: 'Follow-up Reminder',
-                                      description: `Follow-up scheduled for ${new Date(customer.nextFollowup).toLocaleDateString()}`
-                                    });
-                                  }}
-                                  title="Follow-up"
-                                >
-                                  <MessageSquare className="h-3 w-3" />
-                                </Button>
-                              )}
+                                {/* Removed View Details and Follow-up buttons per UX update */}
                             </div>
                           </td>
                         </tr>

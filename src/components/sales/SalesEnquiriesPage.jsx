@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import SalesLayout from '@/components/sales/SalesLayout';
+import { useSalesData } from '@/components/sales/SalesDataContext';
 import { getSalesToken } from '@/lib/storage';
 import { api } from '@/lib/api';
 import { 
@@ -32,6 +33,7 @@ import {
 
 const SalesEnquiriesPage = () => {
   const { toast } = useToast();
+  const salesData = useSalesData();
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSource, setFilterSource] = useState('all');
@@ -51,7 +53,6 @@ const SalesEnquiriesPage = () => {
     subject: '',
     message: '',
     category: 'general',
-    priority: 'medium',
     source: 'website',
     deadline: '',
     notes: ''
@@ -151,6 +152,14 @@ const SalesEnquiriesPage = () => {
       clearInterval(interval);
     };
   }, []);
+
+  // Sync shared context data into local state for cross-page propagation
+  useEffect(() => {
+    if (salesData.customers.length) setCustomers(salesData.customers);
+  }, [salesData.customers]);
+  useEffect(() => {
+    if (salesData.enquiries.length) setEnquiries(salesData.enquiries);
+  }, [salesData.enquiries]);
 
   // Function to load existing quotes and populate enquiriesWithSentQuotes
   const loadExistingQuotes = async () => {
@@ -272,7 +281,6 @@ const SalesEnquiriesPage = () => {
         subject: formData.subject,
         message: formData.message,
         category: formData.category || 'general',
-        priority: formData.priority || 'medium',
         source: formData.source || 'website',
         // Convert date-only string (YYYY-MM-DD) to a Date set at noon to avoid timezone shift
         ...(formData.deadline ? { deadline: new Date(`${formData.deadline}T12:00:00`) } : {})
@@ -287,6 +295,9 @@ const SalesEnquiriesPage = () => {
       setShowAddDialog(false);
       resetForm();
       loadEnquiries();
+      // Propagate to shared context so other pages see the new enquiry / follow-up
+      salesData.refreshEnquiries();
+      salesData.refreshFollowups();
     } catch (error) {
       console.error('Failed to create enquiry:', error);
       toast({ 
@@ -306,7 +317,6 @@ const SalesEnquiriesPage = () => {
       subject: '',
       message: '',
       category: 'general',
-      priority: 'medium',
       source: 'website',
       deadline: '',
       notes: ''
@@ -578,6 +588,9 @@ const SalesEnquiriesPage = () => {
       
       // Reload existing quotes to update the UI
       await loadExistingQuotes();
+      // Propagate quote changes to shared context so Customers page sees updated quote badges
+      salesData.refreshQuotes();
+      salesData.refreshCustomersFromQuotes();
       
       // Reset quote form
       setQuoteContact({ name: '', email: '', company: '', phone: '', address: '', gstin: '', notes: '' });
@@ -688,14 +701,7 @@ const SalesEnquiriesPage = () => {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  const getPriorityColor = (priority) => {
-    const colors = {
-      low: 'bg-green-100 text-green-800',
-      medium: 'bg-yellow-100 text-yellow-800',
-      high: 'bg-red-100 text-red-800'
-    };
-    return colors[priority] || 'bg-gray-100 text-gray-800';
-  };
+  // Priority removed from enquiries UI
 
   if (loading) {
     return (
@@ -820,20 +826,7 @@ const SalesEnquiriesPage = () => {
                       rows={4}
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select value={formData.priority} onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value }))}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Priority field removed as per requirements */}
                   {/* Expected Value removed — not required when creating enquiries */}
                   <div>
                     <Label htmlFor="deadline">Deadline</Label>
@@ -895,9 +888,6 @@ const SalesEnquiriesPage = () => {
                       <p className="text-sm text-gray-600">{enquiry.company}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-1 rounded-full ${getPriorityColor(enquiry.priority)}`}>
-                        {enquiry.priority}
-                      </span>
                       {getStatusIcon(enquiry.status)}
                     </div>
                   </div>
@@ -1044,7 +1034,7 @@ const SalesEnquiriesPage = () => {
                                 </div>
                                 <div>
                                   <p className="text-sm"><strong>Status:</strong> {selectedEnquiry.status}</p>
-                                  <p className="text-sm"><strong>Priority:</strong> {selectedEnquiry.priority}</p>
+                                  {/* Priority removed from details */}
                                   <p className="text-sm"><strong>Deadline:</strong> {selectedEnquiry.deadline ? new Date(selectedEnquiry.deadline).toLocaleDateString() : '—'}</p>
                                   {/* Expected value removed from details */}
                                 </div>

@@ -714,41 +714,11 @@ const BrushingDashboard = () => {
                     title="Brushing and Dryer Setup Checklist"
                     items={checklistState.setup}
                     onToggleItem={(index) => handleToggleChecklistItem('setup', index)}
-                    headerActions={
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const allCompleted = checklistState.setup.every(item => item.completed);
-                          setChecklistState(prev => ({
-                            ...prev,
-                            setup: prev.setup.map(item => ({ ...item, completed: !allCompleted }))
-                          }));
-                        }}
-                      >
-                        {checklistState.setup.every(item => item.completed) ? 'Unmark all' : 'Mark all as completed'}
-                      </Button>
-                    }
                   />
                   <ChecklistCard
                     title="Brushing and Dryer Quality Control"
                     items={checklistState.quality}
                     onToggleItem={(index) => handleToggleChecklistItem('quality', index)}
-                    headerActions={
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const allCompleted = checklistState.quality.every(item => item.completed);
-                          setChecklistState(prev => ({
-                            ...prev,
-                            quality: prev.quality.map(item => ({ ...item, completed: !allCompleted }))
-                          }));
-                        }}
-                      >
-                        {checklistState.quality.every(item => item.completed) ? 'Unmark all' : 'Mark all as completed'}
-                      </Button>
-                    }
                   />
                 </div>
                 <Card>

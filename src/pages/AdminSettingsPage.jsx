@@ -521,39 +521,7 @@ const AdminSettingsPage = () => {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Factory Highlight Video</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">YouTube Embed URL</label>
-                <Input
-                  value={factoryVideoUrl}
-                  onChange={(e) => setFactoryVideoUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/embed/VIDEO_ID"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Enter the full YouTube embed URL for your factory tour video
-                </p>
-              </div>
-              {factoryVideoUrl && (
-                <div className="aspect-video rounded-lg overflow-hidden border">
-                  <iframe
-                    className="w-full h-full"
-                    src={toEmbedUrl(factoryVideoUrl)}
-                    title="Factory Highlight Preview"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                  />
-                </div>
-              )}
-              <div className="flex justify-end">
-                <Button onClick={onSaveFactoryVideo}>Save Video URL</Button>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Factory video is hardcoded to /api/uploads/vst.mp4; admin URL input removed */}
 
           <Card>
             <CardHeader>

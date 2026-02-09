@@ -450,4 +450,90 @@ router.get('/reports/export', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/finance/reports/monthly-sales - Monthly revenue & PI count for the dashboard chart
+router.get('/reports/monthly-sales', requireAdminOrSales, async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const startOfYear = new Date(year, 0, 1);
+    const endOfYear = new Date(year + 1, 0, 1);
+
+    // Monthly revenue from completed transactions
+    const monthlyRevenue = await Transaction.aggregate([
+      {
+        $match: {
+          status: 'completed',
+          type: { $ne: 'refund' },
+          createdAt: { $gte: startOfYear, $lt: endOfYear },
+        },
+      },
+      {
+        $group: {
+          _id: { $month: '$createdAt' },
+          total: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Monthly proforma invoice count from quotes
+    const { findQuoteDocuments } = await import('../models/Quote.js');
+    const allQuotesWithPI = await findQuoteDocuments(
+      { proformaInvoice: { $exists: true, $ne: null } },
+      { sort: { createdAt: -1 } }
+    );
+
+    // Count PIs per month — use PI's own date if available, otherwise
+    // fall back to the parent quote's createdAt (the PI sub-document
+    // often has no separate timestamp).
+    const piByMonth = {};
+    (allQuotesWithPI || []).forEach((q) => {
+      const pi = q.proformaInvoice;
+      if (!pi) return;
+      const piDate = pi.createdAt
+        ? new Date(pi.createdAt)
+        : pi.issuedAt
+          ? new Date(pi.issuedAt)
+          : pi.sentAt
+            ? new Date(pi.sentAt)
+            : q.createdAt
+              ? new Date(q.createdAt)
+              : null;
+      if (!piDate || piDate < startOfYear || piDate >= endOfYear) return;
+      const m = piDate.getMonth() + 1; // 1-12
+      piByMonth[m] = (piByMonth[m] || 0) + 1;
+    });
+
+    // Monthly total quotes created
+    const allQuotes = await findQuoteDocuments(
+      { createdAt: { $gte: startOfYear, $lt: endOfYear } },
+      { sort: { createdAt: -1 } }
+    );
+    const quotesByMonth = {};
+    (allQuotes || []).forEach((q) => {
+      const d = q.createdAt ? new Date(q.createdAt) : null;
+      if (!d) return;
+      const m = d.getMonth() + 1;
+      quotesByMonth[m] = (quotesByMonth[m] || 0) + 1;
+    });
+
+    // Build 12-month array
+    const months = [];
+    for (let m = 1; m <= 12; m++) {
+      const revEntry = monthlyRevenue.find((r) => r._id === m);
+      months.push({
+        month: m,
+        revenue: revEntry?.total || 0,
+        transactionCount: revEntry?.count || 0,
+        proformaInvoices: piByMonth[m] || 0,
+        quotesCount: quotesByMonth[m] || 0,
+      });
+    }
+
+    res.json({ year, months });
+  } catch (err) {
+    console.error('Monthly sales report error:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 export default router;

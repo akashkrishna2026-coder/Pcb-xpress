@@ -62,16 +62,30 @@ const SalesDashboardPage = () => {
 
       try {
         // Load the main datasets in parallel
-        // Load customer data first (we need the raw arrays immediately),
-        // then load other datasets in parallel and compute monthly aggregates
         const customerResults = await loadCustomerData();
+
+        // Load finance, activity, and monthly DB stats in parallel
+        let monthlySalesFromDB = [];
+        const token = getSalesToken();
         await Promise.all([
           loadFinanceData(),
           loadUserActivity(),
+          (async () => {
+            try {
+              const res = await api.getMonthlySalesReport(token, new Date().getFullYear());
+              monthlySalesFromDB = res.months || [];
+            } catch (e) { console.error('Monthly sales report error:', e); }
+          })(),
         ]);
 
-        // After we have the fetched customer/quote arrays, compute monthly aggregates
-        await loadMonthlyData(customerResults?.customers || [], customerResults?.quotes || [], customerResults?.customersFromQuotes || []);
+        // Compute monthly aggregates using both client data and DB stats
+        await loadMonthlyData(
+          customerResults?.customers || [],
+          customerResults?.quotes || [],
+          customerResults?.customersFromQuotes || [],
+          customerResults?.enquiries || [],
+          monthlySalesFromDB
+        );
         // Load dashboard stats too
         await loadDashboardData();
       } catch (err) {
@@ -129,8 +143,8 @@ const SalesDashboardPage = () => {
     if (!token) return;
 
     try {
-      // Load customers
-      const customersRes = await api.getSalesCustomers(token);
+      // Load ALL customers (use high limit to avoid pagination truncation)
+      const customersRes = await api.getSalesCustomers(token, { limit: 10000 });
       if (customersRes.customers) {
         setCustomers(customersRes.customers);
       }
@@ -141,15 +155,26 @@ const SalesDashboardPage = () => {
         setCustomersFromQuotes(quotesRes.customers);
       }
 
-      // Load quotes data directly like Admin Dashboard
-      const quotesListRes = await api.listAllQuotesAdmin(token);
+      // Load ALL quotes (use high limit to avoid pagination truncation)
+      const quotesListRes = await api.listAllQuotesAdmin(token, { limit: 10000 });
       if (quotesListRes.quotes) {
         setQuotes(quotesListRes.quotes);
       }
+
+      // Load ALL enquiries so monthly chart can use them
+      let enquiriesList = [];
+      try {
+        const enquiriesRes = await api.getSalesEnquiries(token, { limit: 10000 });
+        enquiriesList = enquiriesRes.enquiries || [];
+      } catch (eErr) {
+        console.error('Error loading enquiries for dashboard:', eErr);
+      }
+
       return {
         customers: customersRes?.customers || [],
         customersFromQuotes: quotesRes?.customers || [],
-        quotes: quotesListRes?.quotes || []
+        quotes: quotesListRes?.quotes || [],
+        enquiries: enquiriesList
       };
     } catch (error) {
       console.error('Error loading customer data:', error);
@@ -197,22 +222,25 @@ const SalesDashboardPage = () => {
     }
   };
 
-  const loadMonthlyData = async (customersParam = null, quotesParam = null, customersFromQuotesParam = null) => {
+  const loadMonthlyData = async (customersParam = null, quotesParam = null, customersFromQuotesParam = null, enquiriesParam = null, monthlySalesDB = null) => {
     try {
       const currentYear = new Date().getFullYear();
       const months = ['January', 'February', 'March', 'April', 'May', 'June', 
                      'July', 'August', 'September', 'October', 'November', 'December'];
 
+      // Choose data source: prefer passed-in arrays (fresh fetch), fall back to state
+      const custSource = Array.isArray(customersParam) && customersParam.length ? customersParam : customers;
+      const custFromQuotesSource = Array.isArray(customersFromQuotesParam) && customersFromQuotesParam.length ? customersFromQuotesParam : customersFromQuotes;
+      const enquiriesSource = Array.isArray(enquiriesParam) ? enquiriesParam : [];
+      // DB-sourced monthly stats (quotes count, revenue, PI count)
+      const dbMonths = Array.isArray(monthlySalesDB) ? monthlySalesDB : [];
+
       const monthly = months.map((month, index) => {
         const monthStart = new Date(currentYear, index, 1);
         const monthEnd = new Date(currentYear, index + 1, 1);
+        const dbEntry = dbMonths.find(m => m.month === index + 1) || {};
 
-        // Choose data source: prefer passed-in arrays (fresh fetch), fall back to state
-        const custSource = Array.isArray(customersParam) ? customersParam : customers;
-        const quotesSource = Array.isArray(quotesParam) ? quotesParam : quotes;
-        const custFromQuotesSource = Array.isArray(customersFromQuotesParam) ? customersFromQuotesParam : customersFromQuotes;
-
-        // Customer visits in this month
+        // --- Customer Visits: from customer visitHistory ---
         const customerVisits = (custSource || []).reduce((acc, c) => {
           if (!c.visitHistory || !Array.isArray(c.visitHistory)) return acc;
           const count = c.visitHistory.filter(v => {
@@ -222,47 +250,31 @@ const SalesDashboardPage = () => {
           return acc + count;
         }, 0);
 
-        // New contacts (customers created in this month)
-        const contactList = customers.filter(c => {
+        // --- Contacts: new customers + new quote-customers created this month ---
+        const contactsFromCustomers = (custSource || []).filter(c => {
           const d = c.createdAt ? new Date(c.createdAt) : null;
           return d && d >= monthStart && d < monthEnd;
         }).length;
-
-        // Quotes created in this month and considered waiting
-        const waitingForQuote = quotes.filter(q => {
-          const d = q.createdAt ? new Date(q.createdAt) : null;
-          if (!d || d < monthStart || d >= monthEnd) return false;
-          const status = (q.status || '').toLowerCase();
-          return ['pending', 'sent', 'draft', 'open'].includes(status) || !status;
-        }).length;
-
-        // Social media enquiries - try to derive from customer source or quote contact
-        const socialFromCustomers = (custSource || []).filter(c => {
+        const contactsFromQuotes = (custFromQuotesSource || []).filter(c => {
           const d = c.createdAt ? new Date(c.createdAt) : null;
-          return d && d >= monthStart && d < monthEnd && (c.source === 'social' || c.source === 'facebook' || c.source === 'instagram');
+          return d && d >= monthStart && d < monthEnd;
         }).length;
-        const socialFromQuotes = (custFromQuotesSource || []).filter(c => {
-          const d = c.createdAt ? new Date(c.createdAt) : null;
-          return d && d >= monthStart && d < monthEnd && (c.source === 'social' || c.source === 'facebook' || c.source === 'instagram');
+        const contactList = contactsFromCustomers + contactsFromQuotes;
+
+        // --- Quotes: total quotes created this month (from DB) ---
+        const waitingForQuote = dbEntry.quotesCount || 0;
+
+        // --- Enquiries: count of enquiries created this month ---
+        const socialMediaEnquiries = (enquiriesSource || []).filter(e => {
+          const d = e.createdAt ? new Date(e.createdAt) : null;
+          return d && d >= monthStart && d < monthEnd;
         }).length;
 
-        const socialMediaEnquiries = socialFromCustomers + socialFromQuotes;
+        // --- Total Sales: actual revenue from completed transactions (from DB) ---
+        const totalSales = dbEntry.revenue || 0;
 
-        // Total sales from quotes in this month
-        const totalSales = (quotesSource || []).reduce((acc, q) => {
-          const d = q.createdAt ? new Date(q.createdAt) : null;
-          if (!d || d < monthStart || d >= monthEnd) return acc;
-          const revenue = q.adminQuote?.total || q.quote?.total || q.proformaInvoice?.total || q.total || 0;
-          return acc + Number(revenue || 0);
-        }, 0);
-
-        // Performa invoices count in this month (approx from quotes)
-        const performaInvoices = (quotesSource || []).filter(q => {
-          const hasPI = !!q.proformaInvoice;
-          if (!hasPI) return false;
-          const piDate = q.proformaInvoice?.createdAt ? new Date(q.proformaInvoice.createdAt) : (q.proformaInvoice?.issuedAt ? new Date(q.proformaInvoice.issuedAt) : null);
-          return piDate && piDate >= monthStart && piDate < monthEnd;
-        }).length;
+        // --- Proforma Invoices: PI count from DB ---
+        const performaInvoices = dbEntry.proformaInvoices || 0;
 
         return {
           month,
@@ -612,7 +624,7 @@ const SalesDashboardPage = () => {
                             >
                               Quotes: {data.waitingForQuote}
                             </text>
-                            {/* Social Media Enquiries */}
+                            {/* Enquiries count */}
                             <text
                               x={baseLabelX}
                               y={baseLabelY + 40}
@@ -621,7 +633,7 @@ const SalesDashboardPage = () => {
                               className={`${isActive ? 'text-xl' : 'text-lg'} fill-gray-900 transition-all duration-300`}
                               style={{ pointerEvents: 'none' }}
                             >
-                              Social: {data.socialMediaEnquiries}
+                              Enquiries: {data.socialMediaEnquiries}
                             </text>
                             {/* Total Sales */}
                             <text
@@ -691,7 +703,7 @@ const SalesDashboardPage = () => {
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Visits</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Contacts</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quotes</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Social</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Enquiries</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sales</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Invoices</th>
                           </tr>

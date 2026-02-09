@@ -212,6 +212,11 @@ export const api = {
     return request('/api/finance/reports/summary-sales', { token });
   },
 
+  async getMonthlySalesReport(token, year) {
+    const qs = year ? `?year=${year}` : '';
+    return request(`/api/finance/reports/monthly-sales${qs}`, { token });
+  },
+
   async me(token) {
     return request('/api/auth/me', { token });
   },
@@ -1213,6 +1218,23 @@ export const api = {
     return request(`/api/sales/enquiries/${enquiryId}`, {
       method: 'DELETE',
       token
+    });
+  },
+
+  // Follow-up APIs
+  async getSalesFollowups(token, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/api/sales/followups${qs ? '?' + qs : ''}`, { token });
+  },
+
+  async createSalesFollowup(token, data) {
+    return request('/api/sales/followups', { method: 'POST', body: data, token });
+  },
+
+  async completeSalesFollowup(token, followupId) {
+    return request(`/api/sales/followups/${encodeURIComponent(followupId)}/complete`, {
+      method: 'PUT',
+      token,
     });
   },
 

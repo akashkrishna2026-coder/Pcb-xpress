@@ -7,37 +7,11 @@ import { Link } from 'react-router-dom';
 import { api, getApiBaseUrl } from '@/lib/api';
 
 const CapabilitiesPage = () => {
-  const [factoryVideoUrl, setFactoryVideoUrl] = useState('https://www.youtube.com/embed/7YcW25PHnAA');
+  // Hardcoded factory video (served from backend uploads)
+  // Put your MP4 at /server/uploads/vst.mp4 and it will be served at /api/uploads/vst.mp4
+  const factoryVideoUrl = '/api/uploads/vst.mp4';
 
-  const toEmbedUrl = (url = '') => {
-    try {
-      const s = String(url || '').trim();
-      if (!s) return s;
-      const yb = s.match(/^https?:\/\/(?:www\.)?youtu\.be\/([A-Za-z0-9_-]{6,})/);
-      if (yb) return `https://www.youtube.com/embed/${yb[1]}`;
-      const u = new URL(s);
-      if (u.hostname.includes('youtube.com')) {
-        const id = u.searchParams.get('v');
-        if (id) return `https://www.youtube.com/embed/${id}`;
-        if (u.pathname.startsWith('/embed/')) return s;
-      }
-      return s;
-    } catch {
-      return url;
-    }
-  };
-
-  useEffect(() => {
-    // Load factory video URL from settings (public endpoint)
-    fetch(`${getApiBaseUrl()}/api/settings/factory-video-public`)
-      .then(res => res.json())
-      .then(data => {
-        if (data?.value) setFactoryVideoUrl(toEmbedUrl(data.value));
-      })
-      .catch(() => {
-        // Keep default URL on error
-      });
-  }, []);
+  const toEmbedUrl = (url = '') => url; // noop — kept for compatibility
 
   const techSpecs = [
     { key: 'Layers', value: '1–12 (higher on request)' },
@@ -92,8 +66,8 @@ const CapabilitiesPage = () => {
       </section>
 
       <section className="py-16">
-        <div className="container grid lg:grid-cols-3 gap-8">
-          <Card className="lg:col-span-2">
+        <div className="container space-y-8">
+          <Card>
             <CardHeader>
               <CardTitle>Technical Specifications</CardTitle>
             </CardHeader>
@@ -127,23 +101,32 @@ const CapabilitiesPage = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="lg:col-span-3">
             <CardHeader>
               <CardTitle>Factory Highlight</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">Kerala-based smart factory with automated lines, AOI, impedance control, and end-to-end assembly.</p>
-              <div className="aspect-video rounded-lg overflow-hidden border">
-                <iframe
-                  className="w-full h-full"
-                  src={toEmbedUrl(factoryVideoUrl)}
-                  title="PCB Manufacturing — Factory Tour"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground text-center">Kerala-based smart factory with automated lines, AOI, impedance control, and end-to-end assembly.</p>
+              <div className="aspect-video rounded-lg overflow-hidden border bg-black max-w-4xl mx-auto">
+                {factoryVideoUrl && (factoryVideoUrl.endsWith('.mp4') || factoryVideoUrl.includes('/api/uploads/')) ? (
+                  <video className="w-full h-full object-contain" controls>
+                    <source src={factoryVideoUrl} type="video/mp4" />
+                    Your browser does not support the video tag.
+                  </video>
+                ) : (
+                  <iframe
+                    className="w-full h-full"
+                    src={toEmbedUrl(factoryVideoUrl)}
+                    title="PCB Manufacturing — Factory Tour"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                )}
               </div>
-              <Link to="/quote"><Button className="w-full">Get Quote</Button></Link>
+              <div className="text-center">
+                <Link to="/quote"><Button size="lg">Get Quote</Button></Link>
+              </div>
             </CardContent>
           </Card>
         </div>

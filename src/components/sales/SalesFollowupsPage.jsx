@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import SalesLayout from '@/components/sales/SalesLayout';
+import { useSalesData } from '@/components/sales/SalesDataContext';
+import { getSalesToken } from '@/lib/storage';
+import { api } from '@/lib/api';
 import { 
   MessageSquare, 
   Plus, 
@@ -20,15 +23,57 @@ import {
   Calendar,
   User,
   AlertCircle,
-  Bell
+  Bell,
+  RefreshCw
 } from 'lucide-react';
+
+// RescheduleForm component for rescheduling follow-ups
+function RescheduleForm({ followup, onRescheduled }) {
+  const { toast } = useToast();
+  const [date, setDate] = React.useState(followup.scheduledDate?.slice(0, 10) || '');
+  const [time, setTime] = React.useState(followup.scheduledTime || '');
+  const [loading, setLoading] = React.useState(false);
+
+  const handleReschedule = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const token = getSalesToken();
+      await api.updateSalesFollowup(token, followup.id, {
+        scheduledDate: date,
+        scheduledTime: time,
+      });
+      toast({ title: 'Follow-up rescheduled' });
+      onRescheduled && onRescheduled();
+    } catch (err) {
+      toast({ title: 'Error', description: err.message || 'Failed to reschedule' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleReschedule} className="space-y-4">
+      <div>
+        <Label htmlFor="reschedule-date">New Date</Label>
+        <Input id="reschedule-date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+      </div>
+      <div>
+        <Label htmlFor="reschedule-time">New Time</Label>
+        <Input id="reschedule-time" type="time" value={time} onChange={e => setTime(e.target.value)} />
+      </div>
+      <Button type="submit" disabled={loading} className="w-full">
+        {loading ? 'Rescheduling...' : 'Reschedule'}
+      </Button>
+    </form>
+  );
+}
 
 const SalesFollowupsPage = () => {
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
+  const { followups, loadingFollowups: loading, refreshFollowups, refreshEnquiries } = useSalesData();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [followups, setFollowups] = useState([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [formData, setFormData] = useState({
     customerId: '',
@@ -40,46 +85,29 @@ const SalesFollowupsPage = () => {
     scheduledTime: '',
     purpose: '',
     notes: '',
-    priority: 'medium',
     reminderSet: false
   });
 
-  useEffect(() => {
-    loadFollowups();
-  }, []);
-
-  const loadFollowups = async () => {
-    setLoading(true);
-    try {
-      // TODO: Replace with actual API call
-      // const token = getSalesToken();
-      // if (!token) return;
-      // const response = await api.getSalesFollowups(token);
-      // setFollowups(response.followups || []);
-      
-      // For now, set empty array
-      setFollowups([]);
-    } catch (error) {
-      console.error('Failed to load follow-ups:', error);
-      toast({ 
-        title: 'Connection Error', 
-        description: 'Unable to connect to database. Please check your connection.' 
-      });
-      setFollowups([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Data comes from SalesDataContext – no local loading needed
 
   const filteredFollowups = useMemo(() => {
-    return followups.filter(followup => {
+    return (followups || []).filter(followup => {
+      const name = (followup.customerName || '').toLowerCase();
+      const company = (followup.company || '').toLowerCase();
+      const purpose = (followup.purpose || '').toLowerCase();
+      const contact = (followup.contactPerson || '').toLowerCase();
+      const term = searchTerm.toLowerCase();
+
       const matchesSearch = 
-        followup.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        followup.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        followup.purpose.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        followup.contactPerson.toLowerCase().includes(searchTerm.toLowerCase());
+        name.includes(term) ||
+        company.includes(term) ||
+        purpose.includes(term) ||
+        contact.includes(term);
       
-      const matchesStatus = statusFilter === 'all' || followup.status === statusFilter;
+      // Backend uses "overdue" but UI filter might say "scheduled" – show overdue under "scheduled" filter too
+      const matchesStatus = statusFilter === 'all' 
+        || followup.status === statusFilter
+        || (statusFilter === 'scheduled' && followup.status === 'overdue');
       
       return matchesSearch && matchesStatus;
     });
@@ -93,17 +121,14 @@ const SalesFollowupsPage = () => {
         return;
       }
 
-      // Simulate API call
-      const newFollowup = {
-        id: followups.length + 1,
-        ...formData,
-        status: 'scheduled',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        completedAt: null
-      };
+      const token = getSalesToken();
+      if (!token) {
+        toast({ title: 'Authentication error', description: 'Please log in again' });
+        return;
+      }
 
-      setFollowups([newFollowup, ...followups]);
+      await api.createSalesFollowup(token, formData);
+
       setFormData({
         customerId: '',
         customerName: '',
@@ -114,11 +139,11 @@ const SalesFollowupsPage = () => {
         scheduledTime: '',
         purpose: '',
         notes: '',
-        priority: 'medium',
         reminderSet: false
       });
       setShowAddDialog(false);
       toast({ title: 'Follow-up scheduled successfully' });
+      refreshFollowups(); // refresh from backend
     } catch (error) {
       toast({ 
         title: 'Error scheduling follow-up', 
@@ -129,18 +154,17 @@ const SalesFollowupsPage = () => {
 
   const completeFollowup = async (followupId) => {
     try {
-      const updatedFollowups = followups.map(followup => 
-        followup.id === followupId 
-          ? { 
-              ...followup, 
-              status: 'completed', 
-              completedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString() 
-            }
-          : followup
-      );
-      setFollowups(updatedFollowups);
+      const token = getSalesToken();
+      if (!token) {
+        toast({ title: 'Authentication error', description: 'Please log in again' });
+        return;
+      }
+
+      await api.completeSalesFollowup(token, followupId);
       toast({ title: 'Follow-up marked as completed' });
+      // Refresh follow-ups and enquiries (completing an enquiry follow-up changes enquiry status)
+      refreshFollowups();
+      refreshEnquiries();
     } catch (error) {
       toast({ 
         title: 'Error completing follow-up', 
@@ -168,27 +192,14 @@ const SalesFollowupsPage = () => {
     switch (status) {
       case 'scheduled':
         return <Clock className="h-4 w-4 text-blue-500" />;
+      case 'overdue':
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
       case 'completed':
         return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'cancelled':
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
+        return <AlertCircle className="h-4 w-4 text-gray-500" />;
       default:
         return <Clock className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'urgent':
-        return 'bg-red-100 text-red-800';
-      case 'high':
-        return 'bg-orange-100 text-orange-800';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'low':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -219,9 +230,21 @@ const SalesFollowupsPage = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Customer Follow-ups</h1>
-              <p className="text-gray-600">Schedule and track customer follow-ups</p>
+              <p className="text-gray-600">
+                Schedule and track customer follow-ups
+                {followups.length > 0 && (
+                  <span className="ml-2 text-sm">
+                    — {followups.filter(f => f.status === 'overdue').length} overdue, {followups.filter(f => f.status === 'scheduled').length} scheduled
+                  </span>
+                )}
+              </p>
             </div>
-            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={refreshFollowups}>
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Refresh
+              </Button>
+              <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
               <DialogTrigger asChild>
                 <Button>
                   <Plus className="h-4 w-4 mr-2" />
@@ -312,20 +335,6 @@ const SalesFollowupsPage = () => {
                       rows={3}
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select value={formData.priority} onValueChange={(value) => setFormData({...formData, priority: value})}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                   <div className="col-span-2">
                     <Button onClick={handleAddFollowup} className="w-full">
                       <Plus className="h-4 w-4 mr-2" />
@@ -335,6 +344,7 @@ const SalesFollowupsPage = () => {
                 </div>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
 
           {/* Filters */}
@@ -356,6 +366,7 @@ const SalesFollowupsPage = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="overdue">Overdue</SelectItem>
                     <SelectItem value="scheduled">Scheduled</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
@@ -368,7 +379,7 @@ const SalesFollowupsPage = () => {
           {/* Follow-up Cards */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {filteredFollowups.map((followup) => (
-              <Card key={followup.id} className={`hover:shadow-md transition-shadow ${isOverdue(followup.scheduledDate) && followup.status === 'scheduled' ? 'border-red-200 bg-red-50' : ''}`}>
+              <Card key={followup.id} className={`hover:shadow-md transition-shadow ${followup.status === 'overdue' ? 'border-red-200 bg-red-50' : ''}`}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -376,9 +387,8 @@ const SalesFollowupsPage = () => {
                       <p className="text-sm text-gray-600">{followup.company}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {followup.reminderSet && <Bell className="h-4 w-4 text-blue-500" />}
-                      <span className={`text-xs px-2 py-1 rounded-full ${getPriorityColor(followup.priority)}`}>
-                        {followup.priority}
+                      <span className={`text-xs px-2 py-1 rounded-full ${followup.source === 'enquiry' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+                        {followup.source === 'enquiry' ? 'Enquiry' : 'Visit'}
                       </span>
                       {getStatusIcon(followup.status)}
                     </div>
@@ -396,9 +406,9 @@ const SalesFollowupsPage = () => {
                     </div>
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="h-4 w-4 text-gray-400" />
-                      <span className={isOverdue(followup.scheduledDate) && followup.status === 'scheduled' ? 'text-red-600 font-medium' : ''}>
-                        {new Date(followup.scheduledDate).toLocaleDateString()} at {followup.scheduledTime || 'Not specified'}
-                        {isOverdue(followup.scheduledDate) && followup.status === 'scheduled' && ' (Overdue)'}
+                      <span className={followup.status === 'overdue' ? 'text-red-600 font-medium' : ''}>
+                        {new Date(followup.scheduledDate).toLocaleDateString()} {followup.scheduledTime ? `at ${followup.scheduledTime}` : ''}
+                        {followup.status === 'overdue' && ' (Overdue)'}
                       </span>
                     </div>
                   </div>
@@ -422,7 +432,7 @@ const SalesFollowupsPage = () => {
                     </div>
                     
                     <div className="flex gap-2">
-                      {followup.status === 'scheduled' && (
+                      {(followup.status === 'scheduled' || followup.status === 'overdue') && (
                         <Button 
                           size="sm" 
                           variant="outline"
@@ -432,12 +442,43 @@ const SalesFollowupsPage = () => {
                           Mark Complete
                         </Button>
                       )}
-                      <Button size="sm" variant="outline">
-                        View Details
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        Reschedule
-                      </Button>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline">
+                            View Details
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-lg">
+                          <DialogHeader>
+                            <DialogTitle>Follow-up Details</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-2 text-sm">
+                            <div><b>Customer:</b> {followup.customerName}</div>
+                            <div><b>Company:</b> {followup.company}</div>
+                            <div><b>Contact Person:</b> {followup.contactPerson}</div>
+                            <div><b>Type:</b> {followup.followupType}</div>
+                            <div><b>Purpose:</b> {followup.purpose}</div>
+                            <div><b>Notes:</b> {followup.notes || '—'}</div>
+                            {/* Priority removed from UI */}
+                            <div><b>Status:</b> {followup.status}</div>
+                            <div><b>Scheduled:</b> {new Date(followup.scheduledDate).toLocaleDateString()} {followup.scheduledTime ? `at ${followup.scheduledTime}` : ''}</div>
+                            {followup.completedAt && <div><b>Completed:</b> {new Date(followup.completedAt).toLocaleDateString()}</div>}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline">
+                            Reschedule
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Reschedule Follow-up</DialogTitle>
+                          </DialogHeader>
+                          <RescheduleForm followup={followup} onRescheduled={refreshFollowups} />
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   </div>
                 </CardContent>

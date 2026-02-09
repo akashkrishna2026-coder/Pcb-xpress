@@ -44,7 +44,6 @@ const SalesNegotiationsPage = () => {
     ourCounter: '',
     finalValue: '',
     status: 'in_progress',
-    priority: 'medium',
     expectedCloseDate: '',
     assignedTo: '',
     terms: '',
@@ -120,7 +119,6 @@ const SalesNegotiationsPage = () => {
         ourCounter: '',
         finalValue: '',
         status: 'in_progress',
-        priority: 'medium',
         expectedCloseDate: '',
         assignedTo: '',
         terms: '',
@@ -324,20 +322,7 @@ const SalesNegotiationsPage = () => {
                       onChange={(e) => setFormData({...formData, expectedCloseDate: e.target.value})}
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select value={formData.priority} onValueChange={(value) => setFormData({...formData, priority: value})}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Priority removed from Negotiations form */}
                   <div className="col-span-2">
                     <Label htmlFor="terms">Terms & Conditions</Label>
                     <Textarea

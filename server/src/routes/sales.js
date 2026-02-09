@@ -195,16 +195,16 @@ router.post('/sync-quotes', requireSales, async (req, res) => {
 // Get customers from quotes (for sales dashboard)
 router.get('/customers-from-quotes', requireSales, async (req, res) => {
   try {
-    // Try to use the correct import method
-    let quotes;
+    // Load all quotes using the helper exported from models/Quote
+    let quotes = [];
     try {
       const { findQuoteDocuments } = await import('../models/Quote.js');
-      quotes = await findQuoteDocuments({}).sort({ createdAt: -1 });
+      // findQuoteDocuments returns an array; pass sort via options
+      quotes = await findQuoteDocuments({}, { sort: { createdAt: -1 }, limit: undefined });
     } catch (importError) {
-      console.error('Import error, trying fallback:', importError);
-      // Fallback: try direct import if import fails
-      const { default: Quote } = await import('../models/Quote.js');
-      quotes = await Quote.find({}).sort({ createdAt: -1 });
+      console.error('Import error while loading quotes:', importError);
+      // On failure, keep quotes as empty array to avoid crashing the dashboard
+      quotes = [];
     }
     
     // Get all real customers to check against
@@ -837,11 +837,31 @@ router.get('/customers', requireSales, async (req, res) => {
       .skip((page - 1) * limit)
       .select('-password');
 
-    // Transform customers to include id field
-    const transformedCustomers = customers.map(customer => ({
-      ...customer.toObject(),
-      id: customer._id.toString() // Add id field for frontend compatibility
-    }));
+    // ----- Build a quote-count-by-email lookup from ALL quote collections -----
+    let quoteCountByEmail = new Map();
+    try {
+      const allQuotes = await findQuoteDocuments({});
+      allQuotes.forEach(q => {
+        const email = (q.contact?.email || '').toLowerCase().trim();
+        if (email) {
+          quoteCountByEmail.set(email, (quoteCountByEmail.get(email) || 0) + 1);
+        }
+      });
+    } catch (quoteErr) {
+      console.error('Error building quote lookup:', quoteErr.message);
+    }
+
+    // Transform customers to include id field and hasQuote / quoteCount
+    const transformedCustomers = customers.map(customer => {
+      const emailKey = (customer.email || '').toLowerCase().trim();
+      const quoteCount = quoteCountByEmail.get(emailKey) || 0;
+      return {
+        ...customer.toObject(),
+        id: customer._id.toString(), // Add id field for frontend compatibility
+        hasQuote: quoteCount > 0,
+        quoteCount,
+      };
+    });
 
     // Get total count
     const total = await User.countDocuments(query);
@@ -1047,7 +1067,7 @@ router.patch('/customers/:id/priority', requireSales, async (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    if (customer.role !== 'customer') {
+    if (!['user', 'customer'].includes(customer.role)) {
       console.log('User is not a customer, role:', customer.role);
       return res.status(404).json({ error: 'Customer not found' });
     }
@@ -1077,9 +1097,9 @@ router.post('/customers/:id/visits', requireSales, async (req, res) => {
     const { visitDate, visitType, purpose, outcome, nextFollowup, notes } = req.body;
     const customerId = req.params.id;
 
-    // Verify customer exists
+    // Verify customer exists (accept both 'user' and 'customer' roles)
     const customer = await User.findById(customerId);
-    if (!customer || customer.role !== 'customer') {
+    if (!customer || !['user', 'customer'].includes(customer.role)) {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
@@ -1115,12 +1135,102 @@ router.post('/customers/:id/visits', requireSales, async (req, res) => {
 });
 
 // Follow-ups CRUD operations
+// Aggregates real follow-ups from:
+//   1. Customer visitHistory entries with a nextFollowup date
+//   2. Enquiries with a nextFollowup date
 router.get('/followups', requireSales, async (req, res) => {
   try {
-    const { page = 1, limit = 10, status, search } = req.query;
-    
-    // Return empty array - no mock data
-    res.json({ followups: [] });
+    const { status } = req.query;
+    const now = new Date();
+    const followups = [];
+
+    // 1. Customer visit-based follow-ups
+    const customers = await User.find({
+      role: { $in: ['user', 'customer'] },
+      'visitHistory.nextFollowup': { $ne: null }
+    }).select('name email phone company visitHistory');
+
+    customers.forEach(customer => {
+      (customer.visitHistory || []).forEach(visit => {
+        if (!visit.nextFollowup) return;
+        const followupDate = new Date(visit.nextFollowup);
+        const isCompleted = visit.outcome && visit.outcome.toLowerCase().includes('completed');
+        const computedStatus = isCompleted ? 'completed' : (followupDate < now ? 'overdue' : 'scheduled');
+
+        // Apply status filter if provided
+        if (status && status !== 'all' && computedStatus !== status) return;
+
+        followups.push({
+          id: `visit-${customer._id}-${visit._id}`,
+          type: 'visit',
+          customerId: customer._id.toString(),
+          customerName: customer.name,
+          email: customer.email || '',
+          phone: customer.phone || '',
+          company: customer.company || '',
+          contactPerson: customer.name,
+          followupType: visit.visitType || 'phone',
+          scheduledDate: visit.nextFollowup,
+          scheduledTime: '',
+          purpose: visit.purpose || 'Follow-up from previous visit',
+          outcome: visit.outcome || '',
+          notes: visit.notes || '',
+          priority: 'medium',
+          status: computedStatus,
+          source: 'customer_visit',
+          createdAt: visit.createdAt || customer.createdAt,
+          updatedAt: visit.createdAt || customer.updatedAt,
+          completedAt: isCompleted ? (visit.createdAt || null) : null,
+        });
+      });
+    });
+
+    // 2. Enquiry-based follow-ups
+    const enquiryQuery = { nextFollowup: { $ne: null } };
+    const enquiries = await Enquiry.find(enquiryQuery).sort({ nextFollowup: 1 });
+
+    enquiries.forEach(enq => {
+      const followupDate = new Date(enq.nextFollowup);
+      const isResolved = enq.status === 'resolved' || enq.status === 'closed';
+      const computedStatus = isResolved ? 'completed' : (followupDate < now ? 'overdue' : 'scheduled');
+
+      if (status && status !== 'all' && computedStatus !== status) return;
+
+      followups.push({
+        id: `enquiry-${enq._id}`,
+        type: 'enquiry',
+        customerId: enq.customerId?.toString() || '',
+        customerName: enq.customerName || '',
+        email: enq.email || '',
+        phone: enq.phone || '',
+        company: enq.company || '',
+        contactPerson: enq.customerName || '',
+        followupType: enq.source === 'phone' ? 'phone' : (enq.source === 'email' ? 'email' : 'meeting'),
+        scheduledDate: enq.nextFollowup,
+        scheduledTime: '',
+        purpose: enq.subject || 'Enquiry follow-up',
+        outcome: enq.resolution || '',
+        notes: enq.followupNotes || enq.notes || '',
+        priority: enq.priority || 'medium',
+        status: computedStatus,
+        source: 'enquiry',
+        enquiryId: enq._id.toString(),
+        createdAt: enq.createdAt,
+        updatedAt: enq.updatedAt,
+        completedAt: isResolved ? (enq.resolvedAt || enq.updatedAt) : null,
+      });
+    });
+
+    // Sort: overdue first, then scheduled by date
+    const statusOrder = { overdue: 0, scheduled: 1, completed: 2 };
+    followups.sort((a, b) => {
+      const sa = statusOrder[a.status] ?? 1;
+      const sb = statusOrder[b.status] ?? 1;
+      if (sa !== sb) return sa - sb;
+      return new Date(a.scheduledDate) - new Date(b.scheduledDate);
+    });
+
+    res.json({ followups, total: followups.length });
   } catch (error) {
     console.error('Get followups error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1149,6 +1259,55 @@ router.post('/followups', requireSales, async (req, res) => {
     });
   } catch (error) {
     console.error('Create followup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Complete a follow-up (works for both visit-based and enquiry-based)
+router.put('/followups/:followupId/complete', requireSales, async (req, res) => {
+  try {
+    const { followupId } = req.params;
+
+    // Visit-based follow-up: id format is "visit-<userId>-<visitId>"
+    if (followupId.startsWith('visit-')) {
+      const parts = followupId.split('-');
+      // visit-<userId>-<visitId>  (userId and visitId are ObjectIds, 24 hex chars each)
+      const userId = parts[1];
+      const visitId = parts.slice(2).join('-');
+
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ error: 'Customer not found' });
+
+      const visit = user.visitHistory.id(visitId);
+      if (!visit) return res.status(404).json({ error: 'Visit not found' });
+
+      visit.outcome = (visit.outcome || '') + (visit.outcome ? ' | ' : '') + 'Follow-up completed';
+      visit.nextFollowup = null; // Clear the follow-up since it is done
+      user.updatedAt = new Date();
+      await user.save();
+
+      return res.json({ message: 'Follow-up marked as completed', followupId });
+    }
+
+    // Enquiry-based follow-up: id format is "enquiry-<enquiryId>"
+    if (followupId.startsWith('enquiry-')) {
+      const enquiryId = followupId.replace('enquiry-', '');
+
+      const enquiry = await Enquiry.findById(enquiryId);
+      if (!enquiry) return res.status(404).json({ error: 'Enquiry not found' });
+
+      enquiry.status = 'resolved';
+      enquiry.resolution = (enquiry.resolution || '') + (enquiry.resolution ? ' | ' : '') + 'Follow-up completed';
+      enquiry.resolvedAt = new Date();
+      enquiry.updatedAt = new Date();
+      await enquiry.save();
+
+      return res.json({ message: 'Follow-up marked as completed', followupId });
+    }
+
+    return res.status(400).json({ error: 'Unknown follow-up type' });
+  } catch (error) {
+    console.error('Complete followup error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

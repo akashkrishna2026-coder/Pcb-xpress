@@ -51,6 +51,7 @@ import SalesEnquiriesPage from '@/components/sales/SalesEnquiriesPage';
 import SalesFollowupsPage from '@/components/sales/SalesFollowupsPage';
 import SalesNegotiationsPage from '@/components/sales/SalesNegotiationsPage';
 import SalesQuotesPage from '@/components/sales/SalesQuotesPage';
+import { SalesDataProvider } from '@/components/sales/SalesDataContext';
 import { MfgDashboardRouter } from '@/components/manufacturing';
 import AdminMfgPermissionsPage from '@/pages/AdminMfgPermissionsPage';
 import AdminMfgRolesPage from '@/pages/AdminMfgRolesPage';
@@ -58,6 +59,7 @@ import AdminMfgApprovalPage from '@/pages/AdminMfgApprovalPage';
 import Preloader from '@/components/Preloader';
 import PromotionalImagePopup from '@/components/PromotionalImagePopup';
 import ScrollToTopButton from '@/components/ScrollToTopButton';
+import ScrollToTopOnNavigation from '@/components/ScrollToTopOnNavigation';
 import MaintenanceModeBanner from '@/components/MaintenanceModeBanner';
 import PrivacyPolicy from '@/pages/PrivacyPolicy';
 import TermsPage from '@/pages/TermsPage';
@@ -103,6 +105,7 @@ function AppShell() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
+      <ScrollToTopOnNavigation />
       <Preloader active={(initialLoading || routeLoading) && !isPortalRoute} />
       <Helmet>
         <title>PCB Xpress | PCB Manufacturing, Design & 3D Printing</title>
@@ -173,9 +176,9 @@ function AppShell() {
           <Route path="/sales/signup" element={<SalesSignupPage />} />
           <Route path="/sales" element={<Navigate to="/sales/dashboard" replace />} />
           <Route path="/sales/dashboard" element={<SalesDashboardPage />} />
-          <Route path="/sales/customers" element={<SalesCustomersPage />} />
-          <Route path="/sales/enquiries" element={<SalesEnquiriesPage />} />
-          <Route path="/sales/followups" element={<SalesFollowupsPage />} />
+          <Route path="/sales/customers" element={<SalesDataProvider><SalesCustomersPage /></SalesDataProvider>} />
+          <Route path="/sales/enquiries" element={<SalesDataProvider><SalesEnquiriesPage /></SalesDataProvider>} />
+          <Route path="/sales/followups" element={<SalesDataProvider><SalesFollowupsPage /></SalesDataProvider>} />
           <Route path="/sales/negotiations" element={<SalesNegotiationsPage />} />
           <Route path="/sales/quotes" element={<SalesQuotesPage />} />
         </Routes>

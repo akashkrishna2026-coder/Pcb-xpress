@@ -125,7 +125,7 @@ const SalesLayout = ({ children }) => {
 
         {/* Page content */}
         <main className="p-6">
-          {children}
+            {children}
         </main>
       </div>
 
